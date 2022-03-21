@@ -1,0 +1,403 @@
+---
+title: "Cyclistic Bike-share Analysis"
+author: "Pius Mutuma Kimathi"
+date: '2022-03-18'
+output: 
+  pdf_document: 
+    toc: yes
+    number_sections: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(janitor)
+library(lubridate)
+library(scales)
+library(readxl)
+library(writexl)
+library(dplyr)
+library(geosphere)
+library(ggmap)
+```
+
+### BACKGROUND
+
+In 2016, Cyclistic launched a successful bike-share offering. The bikes can be unlocked from one station and returned to any other station in the system anytime.
+
+Customers who purchase single-ride or full-day passes are referred to as Casual Riders. Customers who purchase annual memberships are Cyclistic member
+
+### ASK
+
+## Key Objectives
+1. Identify the business necessity:
+The company seeks to improve their earnings by converting their casual riders. Therefore, the company needs to analyze in what aspects the casual and the annual customers differ. This will enable the creation of a focused and successful marketing message to the casual customers that would convince them to change to the annual subscription.
+
+2. Consider the main stakeholders:
+The team consists of the director of marketing, manager Lily Moreno, the rest of the marketing analytics team, and the Cyclistic executive team.
+
+3. Main task:
+The company aims to convert casual riders into annual members by designing marketing strategies. The case study seeks to analyze the the Cyclistic historical bike trip data to identify trends.
+
+Here, the question, ': How do annual members and casual riders use Cyclistic bikes differently?', seeks to be answered.
+
+### PREPARE
+1. First, the data is checked for credibility. 
+
+The data is public data attained from Cyclistic Bike-share company which is a bike sharing company. The data is organized monthly from the year 2020 until 2021. The naming of the columns and the overall data seems to be in good condition and its first hand data collected by the company itself with many entries and useful data.
+
+2. Sorting and filtering the data:
+
+The focus in this analysis is on the 2020-2021 period as it is a more relevant period to the business task, has Geo-location data, types of bike used, and rider types.
+
+Here, the datasets are loaded for use.
+
+```{r warning=FALSE, include=FALSE}
+Apr_04 <- read.csv("C:\\Users\\Pius\\Desktop\\Google Capstone - BikeShare Case study\\Datasets\\2020_04.csv")
+May_05 <- read.csv("C:\\Users\\Pius\\Desktop\\Google Capstone - BikeShare Case study\\Datasets\\2020_05.csv")
+Jun_06 <- read.csv("C:\\Users\\Pius\\Desktop\\Google Capstone - BikeShare Case study\\Datasets\\2020_06.csv")
+Jul_07 <- read.csv("C:\\Users\\Pius\\Desktop\\Google Capstone - BikeShare Case study\\Datasets\\2020_07.csv")
+Aug_08 <- read.csv("C:\\Users\\Pius\\Desktop\\Google Capstone - BikeShare Case study\\Datasets\\2020_08.csv")
+Sep_09 <- read.csv("C:\\Users\\Pius\\Desktop\\Google Capstone - BikeShare Case study\\Datasets\\2020_09.csv")
+Oct_10 <- read.csv("C:\\Users\\Pius\\Desktop\\Google Capstone - BikeShare Case study\\Datasets\\2020_10.csv")
+Nov_11 <- read.csv("C:\\Users\\Pius\\Desktop\\Google Capstone - BikeShare Case study\\Datasets\\2020_11.csv")
+Dec_12 <- read.csv("C:\\Users\\Pius\\Desktop\\Google Capstone - BikeShare Case study\\Datasets\\2020_12.csv")
+Jan_01 <- read.csv("C:\\Users\\Pius\\Desktop\\Google Capstone - BikeShare Case study\\Datasets\\2021_01.csv")
+Feb_02 <- read.csv("C:\\Users\\Pius\\Desktop\\Google Capstone - BikeShare Case study\\Datasets\\2021_02.csv")
+Mar_03 <- read.csv("C:\\Users\\Pius\\Desktop\\Google Capstone - BikeShare Case study\\Datasets\\2021_03.csv")
+
+```
+
+# Combining the data frames to one data frame and removing the empty columns and rows.
+
+```{r}
+
+bike_rides <- rbind(Apr_04, May_05, Jun_06, Jul_07, Aug_08, Sep_09, Oct_10, Nov_11, Dec_12, Jan_01, Feb_02, Mar_03)
+bike_rides <- janitor::remove_empty(bike_rides, which = c("cols"))
+bike_rides <- janitor:: remove_empty(bike_rides, which = c("rows"))
+
+```
+
+
+### PROCESS
+
+Here, the data was cleaned and processed to ensure it was ready for analysis. Now that all the data is in one data frame, it should be cleaned to remove missing data. Also, new columns will be added from the existing columns in order to come up with a conclusive analysis.
+
+# Viewing the data and its structure
+
+```{r}
+glimpse(bike_rides)
+
+summary(bike_rides)
+```
+
+# Parsing Time and creating a hour field
+
+```{r}
+bike_rides$date <- as.Date(bike_rides$started_at)
+bike_rides$started_at <- lubridate::ymd_hms(bike_rides$started_at)
+bike_rides$ended_at <- lubridate::ymd_hms(bike_rides$ended_at)
+
+bike_rides$start_hour <- lubridate::hour(bike_rides$started_at)
+bike_rides$end_hour <- lubridate::hour(bike_rides$ended_at)
+
+```
+
+# Creating date, Day, Year, Day of week, and Month column
+
+```{r}
+
+bike_rides$Month <- format(as.Date(bike_rides$date), "%m")
+bike_rides$Day <- format(as.Date(bike_rides$date), "%d")
+bike_rides$Year <- format(as.Date(bike_rides$date), "%Y")
+bike_rides$Day_of_week <- format(as.Date(bike_rides$date), "%A")
+
+str(bike_rides)
+```
+
+
+# Creating ride distance column
+
+```{r}
+
+bike_rides$ride_distance <- distGeo(matrix(c(bike_rides$start_lng, bike_rides$start_lat), ncol = 2), matrix(c(bike_rides$end_lng, bike_rides$end_lat), ncol = 2))
+bike_rides$ride_distance <- bike_rides$ride_distance/1000
+```
+
+
+# Converting ride_length to minutes and hours
+
+```{r}
+
+bike_rides$ride_length_by_minutes <- difftime(bike_rides$ended_at, bike_rides$started_at, units = c("mins"))
+bike_rides$ride_length_by_hour <- difftime(bike_rides$ended_at, bike_rides$started_at, units = c("hours"))
+
+str(bike_rides)
+#The speed in Km/h
+bike_rides$ride_speed = c(bike_rides$ride_distance)/as.numeric(c(bike_rides$ride_length_by_hour))
+
+```
+
+# Removing bad data and NAs
+
+```{r}
+
+#Removing bad data
+
+bike_rides_2 <- bike_rides %>%
+  filter (bike_rides$ride_length_by_minutes > 0) %>% drop_na()
+
+str(bike_rides_2)
+```
+
+### ANALYZE
+
+Here, we seek to identify trends and relationships. The data frame is available with the needed columns and will help understand the differences in behavior between the casual and member riders.
+
+# Creating a summary data frame of bike rides
+
+```{r}
+
+bike_rides_summary <- bike_rides_2 %>%
+  group_by(weekly = floor_date(date, "week"), start_hour, end_hour, member_casual) %>%
+  summarize(
+    Minutes = sum(ride_length_by_minutes),
+    Mean = mean(ride_length_by_minutes),
+    Median = median(ride_length_by_minutes),
+    Max = max(ride_length_by_minutes),
+    Min = min(ride_length_by_minutes),
+    Count = n()
+  ) %>%
+  ungroup()
+```
+
+# Creating a summary data frame of bike Types and plotting count of rides by rider type
+
+```{r}
+
+
+bike_type <- bike_rides_2 %>%
+  group_by(member_casual, rideable_type, weekly = floor_date(date, "week")) %>%
+  summarize(
+    Minutes = sum(ride_length_by_minutes),
+    Mean_mins = mean(ride_length_by_minutes),
+    mean_hour = mean(ride_length_by_hour),
+    Median_mins = median(ride_length_by_minutes),
+    Max_mins = max(ride_length_by_minutes),
+    Min_mins = min(ride_length_by_minutes),
+    mean_distance = mean(ride_distance),
+    Count = n()
+  ) %>%
+  ungroup()
+
+```
+
+
+# Total count rides by week
+
+```{r}
+
+summary(bike_rides_summary$Count)
+
+bike_rides_summary$Monthly <- lubridate::month(bike_rides_summary$weekly)
+
+#Count of Rides Per week
+bike_rides_summary %>% ggplot() + geom_col(aes(x = weekly, y = Count, fill = member_casual)) +
+  scale_y_continuous(labels = comma) + 
+  labs(title = "Count of Rides per Week",
+       x = 'Week of Ride',
+       y = "Average Rides per Day")
+```
+The casual riders have a higher ride count than the annual members. It can be assumed that the casual riders utilize the bikes for leisure than the annual members.
+
+# Number of rides by Rider Type in a Week
+
+```{r}
+
+bike_rides_2 %>% 
+  mutate(weekday = wday(started_at, label = TRUE)) %>%
+  group_by(member_casual, weekday) %>%
+  summarise(num_of_rides = n(), .groups = 'drop') %>%
+  ggplot(aes(x = weekday, y = num_of_rides, fill = member_casual)) + 
+  geom_col(position = 'dodge') +
+  scale_y_continuous(labels = comma) + 
+  labs(title = "Count of Rides by Member type in a Week",
+       x = 'Days of the Week',
+       y = "Count of the Rides")
+```
+
+1. Here, the annual members have a higher daily usage of the rides except on Saturday. 
+2. The casual riders tend to use the bikes for leisure as their rides peak more on weekends than on weekdays while annual members use the bikes as a formal type of transport i.e. to work.
+
+# Mean Travel time by Member Type
+
+```{r}
+
+  ggplot(bike_type, aes(x = member_casual, y = Mean_mins, fill = member_casual)) +
+  geom_col(position = 'dodge') +
+  scale_y_continuous(labels = comma) + 
+  labs(title = "Mean Ride Minutes by Week",
+       x="Rider Type",y = "Mean time in Minutes")
+
+```
+
+The casual members had a higher mean ride in minutes weekly which denotes their high usage.
+
+# Mean Travel distance by Member Type
+
+```{r}
+  ggplot(bike_type, aes(x = member_casual, y = mean_distance, fill = member_casual)) +
+  geom_col(position = 'dodge') +
+  scale_y_continuous(labels = comma) + 
+  labs(title = 'Mean Travel Distance by Rider Type', x = "Member Type", y = "Mean distance In Km")
+```
+
+The annual members had a higher mean travel distance than the casual members.
+
+
+# Count of Start of Rides by Hours
+
+```{r}
+ggplot(bike_rides_summary, aes(x = start_hour, y = Count, fill = member_casual)) + geom_col(position = 'dodge') +
+  scale_y_continuous(labels = comma) + 
+  labs(title = "Start Hour of Rides by Hour in a Day",
+       x = 'Start Hour of the Ride',
+       y = "Rides per Hour")
+```
+
+The rides peak at 5 PM by start hour for all types of riders.
+
+# Count of End of Rides by Hours
+
+```{r}
+
+ggplot(bike_rides_summary, aes(x = end_hour, y = Count, fill = member_casual)) + geom_col(position = 'dodge') +
+  scale_y_continuous(labels = comma) + 
+  labs(title = "End Hour of Rides by Hour in a Day",
+       x = 'End Hour of the Ride',
+       y = "Rides per Hour")
+```
+The rides end at 5 PM by end hour for all types of riders.
+
+
+# Total Ride Minutes by Week per member type
+
+```{r}
+
+ggplot(bike_type, aes(x = weekly, y = Minutes, fill = member_casual)) +
+  geom_col(position = 'dodge') +
+  scale_y_continuous(labels = comma) + 
+  labs(title = "Total Ride Minutes",
+       x = 'Week',
+       y = 'Ride Minutes')
+
+```
+
+The casual riders had a higher count of rides by minutes which showcased their high usage for the bikes than the annual members.
+
+# Total Ride Minutes by Bike Type
+
+```{r}
+
+ggplot(bike_type, aes(x = member_casual, y = Count, fill = rideable_type)) +
+  geom_col(position = 'dodge') +
+  scale_y_continuous(labels = comma) +
+  labs(title = "Total Ride Minutes by Bike Type",
+       x = 'Member Type',
+       y = "Bike Trip in Minutes")
+```
+
+Both types of members had similar preferences of Bike type with the preferred type of bike being the docked.
+
+# Weekly Bike Type usage
+
+```{r}
+
+bike_rides_2 %>%
+  mutate(Weekday = wday(started_at, label = TRUE)) %>%
+  group_by(member_casual, rideable_type, Weekday) %>%
+  summarise(Total = n(), .groups = 'drop') %>%
+  ggplot(aes(x = Weekday, y = Total, fill = rideable_type)) +
+  geom_col(position = 'dodge') +
+  facet_wrap(~ member_casual) +
+  scale_y_continuous(labels = comma) +
+  labs(title = "Weekly Bike type usage",
+       x = 'Member Type',
+       y = "Bike Trip in Minutes")
+
+```
+
+Both types of members maintained their preference of a docked bike. 
+
+Casual riders peaked their usage of the docked bike on weekends compared to the annual members who maintained their usage of the docked bike over the week peaking on Saturdays.
+
+# Top 20 Start Station Name by Ride Count
+
+```{r}
+bike_rides_2 %>% 
+  count(start_station_name, sort = TRUE) %>%
+  top_n(20) %>%
+  ggplot() + geom_col(aes(x = fct_reorder(start_station_name,n), y = n)) + 
+  coord_flip() +
+  labs(title = "Top 20 Start Stations by Ride Count",
+       y = "Station Name",
+       x = "Count of Rides") + 
+  scale_y_continuous(labels = comma)
+```
+
+# Filtering the most popular routes and creating a table and boundary coordinates
+```{r}
+#Most Popular Routes
+Routes_table <- bike_rides_2 %>%
+  filter(start_lng != end_lng & start_lat != end_lat) %>%
+  group_by(start_lng, start_lat, end_lng, end_lat, member_casual, rideable_type) %>%
+  summarise(total = n(),.groups="drop") %>%
+  filter(total > 250)
+
+#Creating tables for the user types
+casual_riders <- Routes_table %>% 
+  filter(member_casual == 'casual')
+member_riders <- Routes_table %>%
+  filter(member_casual == 'member')
+
+#Creating the boundary coordinates for the ggmap
+bouding_b_cord <- c(left = -87.700424,
+                    bottom = 41.790769,
+                    right = -87.554855,
+                    top = 41.990119
+                    )
+
+#Storing the stamen map of the area
+Area_stamen <- get_stamenmap(
+  bbox = bouding_b_cord,
+  zoom = 10,
+  maptype = "toner-lite")
+
+```
+
+```{r}
+# Visualizing by casual riders routes
+qmplot(x = start_lng, y = start_lat, xend = end_lng, yend = end_lat, 
+       data = casual_riders, maptype = 'terrain', geom = 'point', 
+       color = rideable_type, size = 0.5) +
+  coord_cartesian() +
+  labs(title = "The popular routes used by Casual Riders",x = NULL,y = NULL, color="User type") +
+  theme(legend.position = "none") 
+```
+
+The Casual riders seem to be closely located in one area since almost all their rides are around one area. This indicates they use their rides for leisure and seem to ride in one area mostly.
+
+```{r}
+#Visualizing by annual members routes
+qmplot(x = start_lng, y = start_lat, xend = end_lng, yend = end_lat, 
+       data = member_riders, maptype = 'terrain', geom = 'point', 
+       color = rideable_type, size = 0.5) +
+  coord_cartesian() +
+  labs(title = "The popular routes used by Annual members",x = NULL,y = NULL, color="User type") +
+  theme(legend.position = "none") 
+```
+
+The annual riders are widespread to the outskirts of the city. This suggests that they use their rides for more than just leisure. The riders can be seen to use the bikes for activities such as commuting to work in the city daily. 
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
